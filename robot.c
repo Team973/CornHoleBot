@@ -1,4 +1,12 @@
 #pragma config(Sensor, dgtl2,  fireRelay,      sensorDigitalOut)
+#pragma config(Sensor, dgtl3,  reservedRelay1, sensorDigitalOut)
+#pragma config(Sensor, dgtl4,  reservedRelay2, sensorDigitalOut)
+#pragma config(Sensor, dgtl5,  reservedRelay3, sensorDigitalOut)
+#pragma config(Sensor, dgtl6,  reservedRelay4, sensorDigitalOut)
+#pragma config(Sensor, dgtl7,  reservedRelay5, sensorDigitalOut)
+#pragma config(Sensor, dgtl8,  reservedRelay6, sensorDigitalOut)
+#pragma config(Sensor, dgtl9,  maxHall,        sensorDigitalIn)
+#pragma config(Sensor, dgtl10, minHall,        sensorDigitalIn)
 #pragma config(Motor,  port2,           rightDriveMotor, tmotorServoContinuousRotation, openLoop, driveRight)
 #pragma config(Motor,  port3,           leftDriveMotor, tmotorServoContinuousRotation, openLoop, driveLeft)
 #pragma config(Motor,  port4,           armMotor,      tmotorServoContinuousRotation, openLoop)
@@ -9,43 +17,51 @@ const int DB_THRESH = 10; // radius
 int FIRE_RELAY_DELAY = 100; // milliseconds
 const int FIRE_CONFIRM_DELAY = 1000; // milliseconds
 bool firingStarted = false; // true if fireBtn pressed, routine started
+bool fireCooldown = false; // true once fired, prevents rapid fire unless driver lets go of the button
 
-float squareInput(float input) {
+// Make square inputs for joysticks
+float squareJoystickInput(float input) {
 	return input * abs(input) / 127;
 }
 
-float deadband(float input) {
+// Create a deadband for joysticks
+float deadbandJoystickInput(float input) {
 	return (abs(input) >= DB_THRESH) ? input : 0.0;
 }
 
+// Fire a bean bag!
 void fireBeanBag(int fireDelay) {
-  SensorValue[fireRelay] = 1
-  ;
-  sleep(fireDelay);
-  SensorValue[fireRelay] = 0;
-  firingStarted = false;
+	SensorValue[fireRelay] = 1;
+	sleep(fireDelay);
+	SensorValue[fireRelay] = 0;
+	firingStarted = false;
+	fireCooldown = true;
 }
 
+// Main task
 task main()
 {
+	// Main loop
 	while (true) {
-	  /**
+		/**
 		 * Open loop arcade drive.
 		 */
-		float throttle = vexRT[Ch3];
-		float turn = vexRT[Ch1];
-		int slowturn = vexRT[Btn6U];
+		float throttle = vexRT[Ch3]; // Throttle amount (left joystick up & down)
+		float turn = vexRT[Ch1]; // Turn amount (right joystick left & right)
+		int slowturn = vexRT[Btn6U]; // Slow down turning
 
-		throttle = deadband(throttle);
-		turn = deadband(turn);
+		throttle = deadbandJoystickInput(throttle); // Deadband throttle
+		turn = deadbandJoystickInput(turn); // Deadband turn
 
+		// Slow down turning
 		if (slowturn == 1) {
 			turn /= 2;
 		}
 
-		throttle = squareInput(throttle);
-		turn = squareInput(turn);
+		throttle = squareJoystickInput(throttle); // Square throttle inputs
+		turn = squareJoystickInput(turn); // Square turn inputs
 
+		// Drivetrain control
 		if (firingStarted == false) {
 			motor[rightDriveMotor] = throttle + turn;
 			motor[leftDriveMotor] = throttle - turn;
@@ -55,16 +71,17 @@ task main()
 			motor[leftDriveMotor] = 0.0;
 		}
 
-		/**
+	  /**
 		 * Open loop arm control.
 		 */
-		int upBtn = vexRT[Btn5U]; // boolean, 0 or 1
-		int downBtn = vexRT[Btn5D]; // boolean, 0 or 1
+		int upBtn = vexRT[Btn5U]; // Move arm up
+		int downBtn = vexRT[Btn5D]; // Move arm down
 
-		if (upBtn == 1) {
+		// Arm movement hall w/ soft limits
+		if (upBtn == 1 && SensorValue[maxHall] == 0) {
 			motor[armMotor] = 63.5;
 		}
-		else if (downBtn == 1) {
+		else if (downBtn == 1 && SensorValue[minHall] == 0) {
 			motor[armMotor] = -63.5;
 		}
 		else {
@@ -76,22 +93,25 @@ task main()
 		 */
 		int fireBtn = vexRT[Btn6D];
 
+		if (vexRT[Btn7U] == 1) { FIRE_RELAY_DELAY = 100; } // 100 ms delay
+		if (vexRT[Btn7R] == 1) { FIRE_RELAY_DELAY = 200; } // 200 ms delay
+		if (vexRT[Btn7D] == 1) { FIRE_RELAY_DELAY = 300; } // 300 ms delay
+		if (vexRT[Btn7L] == 1) { FIRE_RELAY_DELAY = 400; } // 400 ms delay
+		if (vexRT[Btn8U] == 1) { FIRE_RELAY_DELAY = 500; } // 500 ms delay
+		if (vexRT[Btn8R] == 1) { FIRE_RELAY_DELAY = 600; } // 600 ms delay
+		if (vexRT[Btn8D] == 1) { FIRE_RELAY_DELAY = 700; } // 700 ms delay
+		if (vexRT[Btn8L] == 1) { FIRE_RELAY_DELAY = 800; } // 800 ms delay
 
-		if (vexRT[Btn7U] == 1) { FIRE_RELAY_DELAY = 100; }
-		if (vexRT[Btn7R] == 1) { FIRE_RELAY_DELAY = 200; }
-		if (vexRT[Btn7D] == 1) { FIRE_RELAY_DELAY = 300; }
-		if (vexRT[Btn7L] == 1) { FIRE_RELAY_DELAY = 400; }
-		if (vexRT[Btn8U] == 1) { FIRE_RELAY_DELAY = 500; }
-		if (vexRT[Btn8R] == 1) { FIRE_RELAY_DELAY = 600; }
-		if (vexRT[Btn8D] == 1) { FIRE_RELAY_DELAY = 700; }
-		if (vexRT[Btn8L] == 1) { FIRE_RELAY_DELAY = 800; }
-
-		if (fireBtn == 1 && firingStarted == false) {
+		// Firing routine
+		if (fireBtn == 1 && firingStarted == false && fireCooldown == false) {
 			firingStarted = true;
 			clearTimer(T1);
 		}
 		else if (fireBtn == 0 && firingStarted == true) {
 			firingStarted = false;
+		}
+		else if (fireBtn == 0 && fireCooldown == true) {
+			fireCooldown = false;
 		}
 		else if (firingStarted == true && time1[T1] >= FIRE_CONFIRM_DELAY) {
 			fireBeanBag(FIRE_RELAY_DELAY);
